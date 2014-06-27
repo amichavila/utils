@@ -1,0 +1,27 @@
+#!/bin/bash
+# cron entry for mylvmbackup
+
+SRV=`hostname`
+MLB="/usr/bin/mylvmbackup"				# mylvmbackup command
+BDR="/var/backups/mysql/$SRV/"			# backup destiny dir
+LOG="/var/log/backup/mylvmbackup.log"	# backup log
+SND="/etc/zabbix/bin/zabbix_sender"		# trap for zabbix
+ZBX="zabbixtrap" 						# zabbix host
+PRT="10051"								# zabbix port
+KEY="mylvmbackup.status"				# trap key
+
+if test -d $BDR && test -x $MLB; then
+  echo ""
+  echo -n "`date +%Y%m%d" "%T` Info: Removing old backup: " | tee -a $LOG
+  /usr/bin/find /var/backups/mysql/$SRV/ -type f -name 'backup-*_mysql.tar.gz' -mtime +5 -exec rm -fv {} \; | tee -a $LOG
+  echo "`date +%Y%m%d" "%T` Info: Starting a new backup..." | tee -a $LOG
+  /usr/bin/mylvmbackup 2>&1 | tee -a $LOG
+  RC="${PIPESTATUS[0]}"
+  if test -x $SND; then
+    echo "`date +%Y%m%d" "%T` Info: Sending trap to $ZBX:$PRT with value $KEY($RC): " | tee -a $LOG
+    $SND -z $ZBX -p $PRT -s $SRV -k $KEY -o "$RC" -vv | tee -a $LOG 2>&1
+  fi
+  echo "+--+" | tee -a $LOG
+else
+  true
+fi
