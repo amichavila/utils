@@ -1,0 +1,56 @@
+#! /bin/bash
+#
+# Name: mongobbix
+#
+# Checks MongoDB activity.
+# It uses json.sh (thanks to dominictarr):
+# https://github.com/dominictarr/JSON.sh/blob/master/JSON.sh
+#
+# Author: Alejandro Michavila
+#
+# Version: 0.1 - 20140626_1200 Initial release: Alejandro Michavila
+#          0.2 - 20140626_1210 json.sh path to variable: Alejandro Michavila
+#
+ 
+host="localhost"
+port="28017"
+stat="serverStatus"
+path="/etc/zabbix/bin"
+mbxv="0.2"
+rval=0
+ 
+function usage()
+{
+    echo "ZBX_NOTSUPPORTED"
+    echo "mongobbix version: $mbxv" >&2
+    echo "usage: $0 <parameter>" >&2
+}
+ 
+########
+# Main #
+########
+ 
+if [[ $# == 1 ]];then
+    #Agent Mode
+    VAR=$(wget --quiet -O - http://$host:$port/$stat)
+elif [[ $# == 2 ]];then
+    #External Script Mode
+    VAR=$(wget --quiet -O - http://$1:$port/$stat)
+    shift
+else
+    #No Parameter
+    usage
+    exit 0
+fi
+ 
+if [[ -z $VAR ]]; then
+    echo "ZBX_NOTSUPPORTED"
+    exit 1
+else
+    echo $VAR | $path/json.sh -b -p | grep "\"$1\"" | cut -d] -f2 | sed -e 's/^[ \t]*//' | sed 's/[\"]//g'
+fi
+ 
+exit 0
+ 
+#
+# end mongobbix

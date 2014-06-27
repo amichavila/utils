@@ -1,0 +1,52 @@
+#!/bin/bash
+# cron entry for MongoDB backup
+ 
+SRV=`hostname`
+MGB="/var/lib/mongo/x86_64-2.4.9/bin/mongodump" # mongodump command
+MGH="/var/lib/mongo/mongodb"					# db path
+MGD="/var/lib/mongo/dumps"						# mongodump tmp dir
+MGS="/etc/init.d/mongodb.sh"					# service script
+BDR="/var/backups/mongodb/$SRV"					# backup destiny dir
+LOG="/var/log/mongodb/backup.log"				# backup log
+SND="/etc/zabbix/bin/zabbix_sender"				# trap for zabbix
+ZBX="zabbixtrap" 								# zabbix host
+PRT="10051"										# zabbix port
+KEY="mongodump.status"							# trap key
+ 
+if test -d $BDR && test -x $MGB; then
+ 
+echo -n "`date +%Y%m%d" "%T` Info: Removing old backup: " >> $LOG
+  find $BDR -type f -name '*.tar.gz' -mtime +5 -exec rm -fv {} \; &>> $LOG
+ 
+echo "`date +%Y%m%d" "%T` Info: Starting a new backup..." >> $LOG
+  $MGS stop &>> $LOG
+  $MGB -v -h localhost --dbpath $MGH/ --directoryperdb --out $MGD/ --journal &>> $LOG
+  RCD=$?
+  $MGS start &>> $LOG
+ 
+echo "`date +%Y%m%d" "%T` Info: Compressing backup..." >> $LOG
+  for db in `ls $MGD`; do
+    tar -zcvf $BDR/$db-`date +%Y%m%d`.tar.gz -C $MGD $db &>> $LOG
+    RC=$?
+    if [ $RC -ne 0 ]; then
+      RCT=$RC
+    fi
+  done
+  rm -rfv $MGD/* &>> $LOG
+ 
+  if test -x $SND; then
+    echo "`date +%Y%m%d" "%T` Info: Sending trap to $ZBX:$PRT with value $KEY($RC): " >> $LOG
+    if [[ $RCD -eq 0 && $RCT -eq 0 ]]; then
+      RC=0
+    else
+      RC=1
+    fi
+    $SND -z $ZBX -p $PRT -s $SRV -k $KEY -o "$RC" -vv &>> $LOG
+  fi
+ 
+echo "`date +%Y%m%d" "%T` Info: End of MongoDB backup." >> $LOG
+echo "+--+" >> $LOG
+ 
+else
+  true
+fi
